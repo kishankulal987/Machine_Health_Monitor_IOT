@@ -1,0 +1,917 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Machine Health Monitor</title>
+
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;600;700&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --bg:     #060a0f;
+    --panel:  #0d1821;
+    --border: rgba(0,200,255,0.15);
+    --bglow:  rgba(0,200,255,0.5);
+    --cyan:   #00c8ff;
+    --green:  #00ff88;
+    --yellow: #ffcc00;
+    --red:    #ff3355;
+    --text:   #c8e8f8;
+    --dim:    #4a7090;
+    --mono:   'Share Tech Mono', monospace;
+    --ui:     'Rajdhani', sans-serif;
+    --title:  'Orbitron', sans-serif;
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--ui);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  body::before {
+    content:'';
+    position:fixed; inset:0;
+    background-image:
+      linear-gradient(rgba(0,200,255,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,200,255,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events:none; z-index:0;
+  }
+
+  body::after {
+    content:'';
+    position:fixed; inset:0;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.08) 2px, rgba(0,0,0,0.08) 4px);
+    pointer-events:none; z-index:0;
+  }
+
+  .wrapper { position:relative; z-index:1; max-width:1400px; margin:0 auto; padding:0 20px 40px; }
+
+  /* ── LOADING ── */
+  #loading {
+    position:fixed; inset:0; background:var(--bg);
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    z-index:999; gap:20px; transition:opacity 0.5s;
+  }
+  #loading.hide { opacity:0; pointer-events:none; }
+  .loader-title { font-family:var(--title); font-size:20px; color:var(--cyan); letter-spacing:4px; animation:pulse 1.5s ease-in-out infinite; }
+  .loader-bar { width:200px; height:2px; background:rgba(0,200,255,0.15); overflow:hidden; border-radius:2px; }
+  .loader-fill { height:100%; background:var(--cyan); animation:load 1.5s ease-in-out infinite; }
+  .loader-sub { font-family:var(--mono); font-size:11px; color:var(--dim); letter-spacing:2px; }
+  @keyframes load { 0%{width:0%;margin-left:0} 50%{width:60%;margin-left:20%} 100%{width:0%;margin-left:100%} }
+  @keyframes pulse { 0%,100%{opacity:0.5} 50%{opacity:1} }
+
+  /* ── CRITICAL OVERLAY ── */
+  #critical-overlay {
+    display:none;
+    position:fixed; inset:0; z-index:500;
+    background:rgba(4,0,8,0.97);
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap:28px;
+    animation: critBG 1.2s ease-in-out infinite;
+  }
+  #critical-overlay.show { display:flex; }
+
+  @keyframes critBG {
+    0%,100% { background:rgba(4,0,8,0.97); }
+    50%     { background:rgba(20,0,5,0.97); }
+  }
+
+  .crit-icon {
+    font-size:80px;
+    animation: critIconPulse 0.8s ease-in-out infinite;
+  }
+  @keyframes critIconPulse { 0%,100%{transform:scale(1);opacity:1} 50%{transform:scale(1.15);opacity:0.7} }
+
+  .crit-title {
+    font-family:var(--title);
+    font-size:clamp(24px,5vw,42px);
+    color:var(--red);
+    letter-spacing:4px;
+    text-align:center;
+    text-shadow:0 0 30px rgba(255,51,85,0.8);
+    animation: critText 1.2s ease-in-out infinite;
+  }
+  @keyframes critText { 0%,100%{text-shadow:0 0 30px rgba(255,51,85,0.8)} 50%{text-shadow:0 0 60px rgba(255,51,85,1),0 0 100px rgba(255,51,85,0.4)} }
+
+  .crit-sub {
+    font-family:var(--mono);
+    font-size:14px;
+    color:rgba(255,51,85,0.7);
+    letter-spacing:3px;
+    text-align:center;
+  }
+
+  .crit-reason {
+    font-family:var(--mono);
+    font-size:12px;
+    color:var(--dim);
+    letter-spacing:2px;
+    text-align:center;
+    padding:12px 24px;
+    border:1px solid rgba(255,51,85,0.2);
+    background:rgba(255,51,85,0.05);
+    max-width:500px;
+    line-height:1.8;
+  }
+
+  .crit-divider {
+    width:200px; height:1px;
+    background:linear-gradient(90deg, transparent, rgba(255,51,85,0.5), transparent);
+  }
+
+  /* RESTART BUTTON */
+  #btn-restart {
+    display:flex;
+    align-items:center;
+    gap:12px;
+    padding:16px 40px;
+    font-family:var(--title);
+    font-size:14px;
+    letter-spacing:3px;
+    color:#fff;
+    background:transparent;
+    border:2px solid var(--green);
+    cursor:pointer;
+    clip-path:polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 12px 100%, 0 calc(100% - 12px));
+    position:relative;
+    overflow:hidden;
+    transition:all 0.3s;
+  }
+
+  #btn-restart::before {
+    content:'';
+    position:absolute; inset:0;
+    background:var(--green);
+    opacity:0;
+    transition:opacity 0.3s;
+  }
+
+  #btn-restart:hover::before { opacity:0.12; }
+  #btn-restart:hover { box-shadow:0 0 25px rgba(0,255,136,0.4); color:var(--green); }
+  #btn-restart:active { transform:scale(0.97); }
+  #btn-restart:disabled { border-color:var(--dim); color:var(--dim); cursor:not-allowed; }
+  #btn-restart:disabled::before { display:none; }
+
+  .btn-icon { font-size:20px; position:relative; }
+
+  .restart-confirm {
+    font-family:var(--mono);
+    font-size:10px;
+    color:rgba(0,255,136,0.5);
+    letter-spacing:2px;
+    text-align:center;
+  }
+
+  /* ── HEADER ── */
+  header {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:24px 0 20px; border-bottom:1px solid var(--border);
+    flex-wrap:wrap; gap:16px;
+  }
+
+  .logo-area { display:flex; align-items:center; gap:14px; }
+
+  .logo-icon {
+    width:48px; height:48px; border:2px solid var(--cyan);
+    display:flex; align-items:center; justify-content:center; font-size:22px;
+    clip-path:polygon(8px 0%,100% 0%,100% calc(100% - 8px),calc(100% - 8px) 100%,0% 100%,0% 8px);
+    background:rgba(0,200,255,0.07);
+    animation:logoPulse 3s ease-in-out infinite;
+  }
+  @keyframes logoPulse { 0%,100%{box-shadow:0 0 10px rgba(0,200,255,0.3)} 50%{box-shadow:0 0 25px rgba(0,200,255,0.6)} }
+
+  h1 { font-family:var(--title); font-size:clamp(14px,2.5vw,22px); color:var(--cyan); letter-spacing:2px; }
+  .subtitle { font-family:var(--mono); font-size:11px; color:var(--dim); letter-spacing:1px; margin-top:2px; }
+
+  .header-right { display:flex; flex-direction:column; align-items:flex-end; gap:6px; }
+
+  .connection-badge { display:flex; align-items:center; gap:8px; font-family:var(--mono); font-size:11px; color:var(--dim); }
+
+  .dot { width:8px; height:8px; border-radius:50%; background:var(--dim); transition:background 0.4s; }
+  .dot.online { background:var(--green); box-shadow:0 0 8px var(--green); animation:blink 1.5s ease-in-out infinite; }
+  .dot.offline { background:var(--red); }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+  #clock { font-family:var(--mono); font-size:12px; color:var(--cyan); letter-spacing:1px; }
+
+  /* ── STATUS BANNER ── */
+  .status-banner {
+    margin:24px 0; padding:16px 24px;
+    border:1px solid var(--border); background:rgba(0,200,255,0.04);
+    display:flex; align-items:center; justify-content:space-between;
+    clip-path:polygon(0 0,calc(100% - 20px) 0,100% 20px,100% 100%,20px 100%,0 calc(100% - 20px));
+    flex-wrap:wrap; gap:12px; transition:all 0.4s;
+  }
+  .status-banner.normal  { border-color:rgba(0,255,136,0.3); background:rgba(0,255,136,0.04); }
+  .status-banner.warning { border-color:rgba(255,204,0,0.4);  background:rgba(255,204,0,0.06); }
+  .status-banner.critical{ border-color:rgba(255,51,85,0.5);  background:rgba(255,51,85,0.08); }
+
+  .status-label { display:flex; align-items:center; gap:12px; }
+  .status-indicator { font-family:var(--title); font-size:13px; letter-spacing:3px; font-weight:700; }
+  .status-indicator.normal   { color:var(--green); }
+  .status-indicator.warning  { color:var(--yellow); }
+  .status-indicator.critical { color:var(--red); }
+  .status-icon { font-size:20px; }
+  .status-metrics { font-family:var(--mono); font-size:11px; color:var(--dim); letter-spacing:1px; }
+
+  /* ── DOWNLOAD LOG BUTTON ── */
+  #btn-download-log {
+    display:flex;
+    align-items:center;
+    gap:10px;
+    padding:10px 22px;
+    font-family:var(--title);
+    font-size:12px;
+    letter-spacing:3px;
+    color:var(--cyan);
+    background:transparent;
+    border:1px solid rgba(0,200,255,0.4);
+    cursor:pointer;
+    clip-path:polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px));
+    position:relative;
+    overflow:hidden;
+    transition:all 0.3s;
+    margin-top: 4px;
+  }
+  #btn-download-log::before {
+    content:'';
+    position:absolute; inset:0;
+    background:var(--cyan);
+    opacity:0;
+    transition:opacity 0.3s;
+  }
+  #btn-download-log:hover::before { opacity:0.08; }
+  #btn-download-log:hover { border-color:var(--cyan); box-shadow:0 0 18px rgba(0,200,255,0.3); }
+  #btn-download-log:active { transform:scale(0.97); }
+  .dl-icon { font-size:14px; position:relative; }
+  .dl-label { position:relative; }
+
+  /* ── CARDS ── */
+  .cards-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:16px; margin-bottom:24px; }
+
+  .card {
+    background:var(--panel); border:1px solid var(--border); padding:20px;
+    position:relative;
+    clip-path:polygon(0 0,calc(100% - 16px) 0,100% 16px,100% 100%,16px 100%,0 calc(100% - 16px));
+    transition:border-color 0.4s, transform 0.2s;
+  }
+  .card:hover { transform:translateY(-2px); border-color:var(--bglow); }
+  .card.alert-warning  { border-color:rgba(255,204,0,0.5); }
+  .card.alert-critical { border-color:rgba(255,51,85,0.6); animation:cardPulse 1s ease-in-out infinite; }
+  @keyframes cardPulse { 0%,100%{opacity:1} 50%{opacity:0.85} }
+
+  .card::before { content:''; position:absolute; top:0; right:16px; width:40px; height:2px; background:var(--cyan); opacity:0.4; }
+
+  .card-header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px; }
+  .card-title { font-family:var(--mono); font-size:10px; color:var(--dim); letter-spacing:2px; text-transform:uppercase; }
+  .card-icon { font-size:18px; opacity:0.8; }
+
+  .card-value { font-family:var(--title); font-size:clamp(32px,5vw,48px); font-weight:700; color:var(--cyan); line-height:1; transition:color 0.4s; }
+  .card-value.warn { color:var(--yellow); }
+  .card-value.crit { color:var(--red); }
+
+  .card-unit { font-family:var(--mono); font-size:13px; color:var(--dim); margin-left:4px; }
+  .card-sub  { font-family:var(--mono); font-size:10px; color:var(--dim); margin-top:8px; letter-spacing:1px; }
+
+  .threshold-bar { margin-top:14px; height:3px; background:rgba(255,255,255,0.07); border-radius:2px; overflow:hidden; }
+  .threshold-fill { height:100%; border-radius:2px; transition:width 0.8s ease,background 0.4s; background:var(--cyan); }
+
+  .alert-tag {
+    display:inline-block; margin-top:10px; padding:3px 8px;
+    font-family:var(--mono); font-size:9px; letter-spacing:2px; border-radius:2px;
+    background:rgba(0,200,255,0.1); color:var(--cyan); border:1px solid rgba(0,200,255,0.3);
+  }
+  .alert-tag.warn { background:rgba(255,204,0,0.1); color:var(--yellow); border-color:rgba(255,204,0,0.3); }
+  .alert-tag.crit { background:rgba(255,51,85,0.15); color:var(--red); border-color:rgba(255,51,85,0.4); }
+
+  /* ── BOTTOM ROW ── */
+  .bottom-row { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:24px; }
+  @media(max-width:700px){ .bottom-row{ grid-template-columns:1fr; } }
+
+  .panel {
+    background:var(--panel); border:1px solid var(--border); padding:20px;
+    clip-path:polygon(0 0,calc(100% - 16px) 0,100% 16px,100% 100%,16px 100%,0 calc(100% - 16px));
+  }
+  .panel-title {
+    font-family:var(--mono); font-size:10px; color:var(--dim); letter-spacing:2px;
+    text-transform:uppercase; margin-bottom:16px; padding-bottom:10px; border-bottom:1px solid var(--border);
+  }
+
+  .imu-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  .imu-section-label { font-family:var(--mono); font-size:9px; color:var(--dim); letter-spacing:2px; margin-bottom:10px; }
+
+  .axis-row { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+  .axis-label { font-family:var(--mono); font-size:10px; color:var(--dim); width:20px; }
+  .axis-bar-wrap { flex:1; height:4px; background:rgba(255,255,255,0.06); border-radius:2px; margin:0 10px; overflow:hidden; }
+  .axis-bar { height:100%; border-radius:2px; transition:width 0.5s,background 0.3s; background:var(--cyan); }
+  .axis-val { font-family:var(--mono); font-size:10px; color:var(--text); width:48px; text-align:right; }
+
+  .log-list { list-style:none; max-height:160px; overflow-y:auto; scrollbar-width:thin; scrollbar-color:var(--border) transparent; }
+  .log-item {
+    font-family:var(--mono); font-size:10px; color:var(--dim); padding:5px 0;
+    border-bottom:1px solid rgba(255,255,255,0.04); display:flex; gap:8px; align-items:flex-start;
+    animation:fadeIn 0.3s ease;
+  }
+  @keyframes fadeIn { from{opacity:0;transform:translateY(-4px)} to{opacity:1;transform:none} }
+  .log-time { color:var(--cyan); flex-shrink:0; }
+  .log-msg.ok   { color:var(--green); }
+  .log-msg.warn { color:var(--yellow); }
+  .log-msg.crit { color:var(--red); }
+
+  .chart-wrap {
+    grid-column:span 2; background:var(--panel); border:1px solid var(--border); padding:20px;
+    clip-path:polygon(0 0,calc(100% - 16px) 0,100% 16px,100% 100%,16px 100%,0 calc(100% - 16px));
+  }
+  @media(max-width:700px){ .chart-wrap{ grid-column:span 1; } }
+
+  footer {
+    border-top:1px solid var(--border); padding-top:16px;
+    display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;
+    font-family:var(--mono); font-size:10px; color:var(--dim);
+  }
+</style>
+</head>
+<body>
+
+<!-- Loading Screen -->
+<div id="loading">
+  <div class="loader-title">INITIALIZING</div>
+  <div class="loader-bar"><div class="loader-fill"></div></div>
+  <div class="loader-sub">CONNECTING TO FIREBASE...</div>
+</div>
+
+<!-- CRITICAL SHUTDOWN OVERLAY -->
+<div id="critical-overlay">
+  <div class="crit-icon">🚨</div>
+  <div class="crit-title">MACHINE SHUTDOWN</div>
+  <div class="crit-sub">CRITICAL THRESHOLD EXCEEDED — AUTO-SHUTDOWN TRIGGERED</div>
+  <div class="crit-divider"></div>
+  <div class="crit-reason" id="crit-reason">Loading fault details...</div>
+  <div class="crit-divider"></div>
+  <button id="btn-restart" onclick="sendRestartCommand()">
+    <span class="btn-icon">⚡</span>
+    RESTART MACHINE
+  </button>
+  <div class="restart-confirm" id="restart-confirm"></div>
+</div>
+
+<div class="wrapper">
+  <!-- Header -->
+  <header>
+    <div class="logo-area">
+      <div class="logo-icon">⚙</div>
+      <div>
+        <h1>Machine Health Monitor</h1>
+        <div class="subtitle">ESP32 · DHT11 · MPU9255 · ACS712 · FIREBASE RTDB</div>
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="connection-badge">
+        <div class="dot" id="conn-dot"></div>
+        <span id="conn-status">CONNECTING...</span>
+      </div>
+      <div id="clock">--:--:--</div>
+      <!-- ── DOWNLOAD LOG BUTTON ── -->
+      <button id="btn-download-log" onclick="downloadLogReport()">
+        <span class="dl-icon">⬇</span>
+        <span class="dl-label">DOWNLOAD LOG</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Status Banner -->
+  <div class="status-banner normal" id="status-banner">
+    <div class="status-label">
+      <span class="status-icon" id="status-icon">✅</span>
+      <div>
+        <div class="status-indicator normal" id="status-text">NORMAL OPERATION</div>
+        <div class="status-metrics" id="status-metrics">Waiting for data...</div>
+      </div>
+    </div>
+    <div id="uptime-display" style="font-family:var(--mono);font-size:11px;color:var(--dim);">UPTIME: --</div>
+  </div>
+
+  <!-- Sensor Cards -->
+  <div class="cards-grid">
+    <div class="card" id="card-temp">
+      <div class="card-header">
+        <div class="card-title">TEMPERATURE</div><div class="card-icon">🌡</div>
+      </div>
+      <div><span class="card-value" id="val-temp">--</span><span class="card-unit">°C</span></div>
+      <div class="card-sub" id="sub-humidity">HUM: -- %</div>
+      <div class="threshold-bar"><div class="threshold-fill" id="bar-temp" style="width:0%"></div></div>
+      <div><span class="alert-tag" id="tag-temp">NOMINAL</span></div>
+    </div>
+
+    <div class="card" id="card-humid">
+      <div class="card-header">
+        <div class="card-title">HUMIDITY</div><div class="card-icon">💧</div>
+      </div>
+      <div><span class="card-value" id="val-humid">--</span><span class="card-unit">%</span></div>
+      <div class="card-sub">RELATIVE HUMIDITY</div>
+      <div class="threshold-bar"><div class="threshold-fill" id="bar-humid" style="width:0%"></div></div>
+      <div><span class="alert-tag" id="tag-humid">NOMINAL</span></div>
+    </div>
+
+    <div class="card" id="card-current">
+      <div class="card-header">
+        <div class="card-title">CURRENT DRAW</div><div class="card-icon">⚡</div>
+      </div>
+      <div><span class="card-value" id="val-current">--</span><span class="card-unit">A</span></div>
+      <div class="card-sub">ACS712 · 30A MODULE</div>
+      <div class="threshold-bar"><div class="threshold-fill" id="bar-current" style="width:0%"></div></div>
+      <div><span class="alert-tag" id="tag-current">NOMINAL</span></div>
+    </div>
+
+    <div class="card" id="card-vib">
+      <div class="card-header">
+        <div class="card-title">VIBRATION</div><div class="card-icon">📳</div>
+      </div>
+      <div><span class="card-value" id="val-vib">--</span><span class="card-unit">g</span></div>
+      <div class="card-sub">MPU9255 · MAGNITUDE</div>
+      <div class="threshold-bar"><div class="threshold-fill" id="bar-vib" style="width:0%"></div></div>
+      <div><span class="alert-tag" id="tag-vib">NOMINAL</span></div>
+    </div>
+  </div>
+
+  <!-- Bottom Row -->
+  <div class="bottom-row">
+    <div class="panel">
+      <div class="panel-title">// IMU DETAILS — MPU9255</div>
+      <div class="imu-grid">
+        <div>
+          <div class="imu-section-label">ACCELEROMETER (g)</div>
+          <div class="axis-row"><div class="axis-label">X</div><div class="axis-bar-wrap"><div class="axis-bar" id="ab-ax" style="width:50%"></div></div><div class="axis-val" id="av-ax">--</div></div>
+          <div class="axis-row"><div class="axis-label">Y</div><div class="axis-bar-wrap"><div class="axis-bar" id="ab-ay" style="width:50%"></div></div><div class="axis-val" id="av-ay">--</div></div>
+          <div class="axis-row"><div class="axis-label">Z</div><div class="axis-bar-wrap"><div class="axis-bar" id="ab-az" style="width:80%"></div></div><div class="axis-val" id="av-az">--</div></div>
+        </div>
+        <div>
+          <div class="imu-section-label">GYROSCOPE (°/s)</div>
+          <div class="axis-row"><div class="axis-label">X</div><div class="axis-bar-wrap"><div class="axis-bar" id="ab-gx" style="background:var(--green);width:50%"></div></div><div class="axis-val" id="av-gx">--</div></div>
+          <div class="axis-row"><div class="axis-label">Y</div><div class="axis-bar-wrap"><div class="axis-bar" id="ab-gy" style="background:var(--green);width:50%"></div></div><div class="axis-val" id="av-gy">--</div></div>
+          <div class="axis-row"><div class="axis-label">Z</div><div class="axis-bar-wrap"><div class="axis-bar" id="ab-gz" style="background:var(--green);width:50%"></div></div><div class="axis-val" id="av-gz">--</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">// EVENT LOG</div>
+      <ul class="log-list" id="log-list">
+        <li class="log-item"><span class="log-time">--:--:--</span><span class="log-msg">Waiting for data...</span></li>
+      </ul>
+    </div>
+
+    <div class="chart-wrap" style="grid-column:span 2">
+      <div class="panel-title">// REAL-TIME TREND — LAST 20 READINGS</div>
+      <canvas id="trendChart" height="100"></canvas>
+    </div>
+  </div>
+
+  <footer>
+    <span>ESP32 INDUSTRIAL HEALTH MONITOR · IoT LAB</span>
+    <span id="last-update">LAST UPDATE: --</span>
+    <span>FIREBASE RTDB</span>
+  </footer>
+</div>
+
+<script>
+// ─── Firebase Config ───
+const firebaseConfig = {
+  apiKey:      "enter api key",
+  databaseURL: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  projectId:   "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  appId:       "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+};
+
+// ─── Thresholds ───
+const THRESH = { temp:50, humid:80, current:10, vib:0.3 };
+const CRITICAL_THRESH = { temp:65, current:15, vib:0.6 };
+
+// ─── Init Firebase ───
+firebase.initializeApp(firebaseConfig);
+const db      = firebase.database();
+const dataRef = db.ref('/machine/sensor_data');
+const ctrlRef = db.ref('/machine/control');
+
+// ─── Chart ───
+const MAX_PTS = 20;
+const chartLabels=[], tempData=[], currentData=[], vibData=[];
+const ctx = document.getElementById('trendChart').getContext('2d');
+const chart = new Chart(ctx, {
+  type:'line',
+  data:{
+    labels:chartLabels,
+    datasets:[
+      { label:'Temp (°C)',         data:tempData,    borderColor:'#00c8ff', backgroundColor:'rgba(0,200,255,0.08)', borderWidth:1.5, pointRadius:2, tension:0.4 },
+      { label:'Current (A)',       data:currentData, borderColor:'#ffcc00', backgroundColor:'rgba(255,204,0,0.06)',  borderWidth:1.5, pointRadius:2, tension:0.4 },
+      { label:'Vibration ×10 (g)', data:vibData,     borderColor:'#ff3355', backgroundColor:'rgba(255,51,85,0.06)',  borderWidth:1.5, pointRadius:2, tension:0.4 }
+    ]
+  },
+  options:{
+    responsive:true, animation:false,
+    plugins:{ legend:{ labels:{ color:'#4a7090', font:{ family:'Share Tech Mono', size:10 } } } },
+    scales:{
+      x:{ ticks:{ color:'#4a7090', font:{ family:'Share Tech Mono', size:9 }, maxTicksLimit:6 }, grid:{ color:'rgba(0,200,255,0.05)' } },
+      y:{ ticks:{ color:'#4a7090', font:{ family:'Share Tech Mono', size:9 } }, grid:{ color:'rgba(0,200,255,0.05)' } }
+    }
+  }
+});
+
+// ─── State ───
+let latestData = null;
+
+// ─── Helpers ───
+const now = () => new Date().toLocaleTimeString('en-IN', { hour12:false });
+const pct = (v, max) => Math.min(100, Math.max(0, (Math.abs(v)/max)*100)).toFixed(1)+'%';
+
+let logCount = 0;
+const logList = document.getElementById('log-list');
+const eventLogEntries = []; // store all log entries for report
+
+function addLog(msg, type='ok') {
+  if (logCount===0) logList.innerHTML='';
+  const timestamp = now();
+  // Store for report
+  eventLogEntries.unshift({ time: timestamp, msg, type });
+  if (eventLogEntries.length > 200) eventLogEntries.pop();
+
+  const li = document.createElement('li');
+  li.className='log-item';
+  li.innerHTML=`<span class="log-time">${timestamp}</span><span class="log-msg ${type}">${msg}</span>`;
+  logList.prepend(li);
+  logCount++;
+  while (logList.children.length > 30) logList.removeChild(logList.lastChild);
+}
+
+function updateCard(cardId, valId, tagId, barId, value, threshold, decimals) {
+  const card=document.getElementById(cardId);
+  const valEl=document.getElementById(valId);
+  const tagEl=document.getElementById(tagId);
+  const barEl=document.getElementById(barId);
+  valEl.textContent = parseFloat(value).toFixed(decimals);
+  barEl.style.width = pct(value, threshold*1.5);
+  card.className='card'; valEl.className='card-value';
+  tagEl.className='alert-tag'; barEl.style.background='var(--cyan)';
+  if (Math.abs(value)>=threshold) {
+    card.classList.add('alert-critical'); valEl.classList.add('crit');
+    tagEl.classList.add('crit'); tagEl.textContent='⚠ THRESHOLD EXCEEDED';
+    barEl.style.background='var(--red)';
+  } else if (Math.abs(value)>=threshold*0.7) {
+    card.classList.add('alert-warning'); valEl.classList.add('warn');
+    tagEl.classList.add('warn'); tagEl.textContent='△ APPROACHING LIMIT';
+    barEl.style.background='var(--yellow)';
+  } else {
+    tagEl.textContent='✓ NOMINAL';
+  }
+}
+
+function updateAxisBar(barId, valId, val, range, color) {
+  const p = Math.min(100, Math.max(0, 50+(val/range)*50));
+  document.getElementById(barId).style.width = p+'%';
+  document.getElementById(barId).style.background = color||'var(--cyan)';
+  document.getElementById(valId).textContent = val.toFixed(2);
+}
+
+// ─── CRITICAL OVERLAY LOGIC ───
+let overlayShowing = false;
+
+function showCriticalOverlay(data) {
+  if (overlayShowing) return;
+  overlayShowing = true;
+  const faults = [];
+  if (data.temperature > CRITICAL_THRESH.temp)    faults.push(`TEMP  ${data.temperature.toFixed(1)}°C  [LIMIT: ${CRITICAL_THRESH.temp}°C]`);
+  if (data.current     > CRITICAL_THRESH.current) faults.push(`CURRENT  ${data.current.toFixed(2)}A  [LIMIT: ${CRITICAL_THRESH.current}A]`);
+  if (data.vibration   > CRITICAL_THRESH.vib)     faults.push(`VIBRATION  ${data.vibration.toFixed(3)}g  [LIMIT: ${CRITICAL_THRESH.vib}g]`);
+  if (faults.length === 0) faults.push('THRESHOLD BREACHED — SEE SENSOR DATA');
+  document.getElementById('crit-reason').innerHTML =
+    '<strong style="color:rgba(255,51,85,0.8);letter-spacing:2px;">FAULT DETECTED:</strong><br><br>' +
+    faults.join('<br>');
+  document.getElementById('btn-restart').disabled = false;
+  document.getElementById('restart-confirm').textContent = '';
+  document.getElementById('critical-overlay').classList.add('show');
+  addLog('CRITICAL: Machine auto-shutdown triggered.', 'crit');
+}
+
+function hideCriticalOverlay() {
+  overlayShowing = false;
+  document.getElementById('critical-overlay').classList.remove('show');
+}
+
+// ─── RESTART COMMAND → Firebase ───
+function sendRestartCommand() {
+  const btn = document.getElementById('btn-restart');
+  const confirmEl = document.getElementById('restart-confirm');
+  btn.disabled = true;
+  confirmEl.textContent = 'SENDING RESTART COMMAND...';
+  ctrlRef.update({ command: 'restart', machine_on: false })
+    .then(() => {
+      confirmEl.textContent = '✓ COMMAND SENT — WAITING FOR ESP32...';
+      addLog('Restart command sent from webpage.', 'warn');
+      const listener = ctrlRef.child('machine_on').on('value', (snap) => {
+        if (snap.val() === true) {
+          ctrlRef.child('machine_on').off('value', listener);
+          confirmEl.textContent = '✓ MACHINE RESTARTED SUCCESSFULLY';
+          addLog('Machine restarted — back online.', 'ok');
+          setTimeout(() => hideCriticalOverlay(), 1500);
+        }
+      });
+      setTimeout(() => {
+        ctrlRef.child('machine_on').off('value', listener);
+        if (overlayShowing) {
+          btn.disabled = false;
+          confirmEl.textContent = '⚠ NO RESPONSE — CHECK ESP32 CONNECTION';
+        }
+      }, 30000);
+    })
+    .catch(err => {
+      confirmEl.textContent = '❌ ERROR: ' + err.message;
+      btn.disabled = false;
+    });
+}
+
+// ════════════════════════════════════════════
+// ── DOWNLOAD LOG REPORT ──────────────────────
+// ════════════════════════════════════════════
+function downloadLogReport() {
+  const reportDate = new Date().toLocaleString('en-IN', { hour12: false });
+  const d = latestData;
+
+  // ── Helper: status badge text
+  function getStatusText(val, thresh, critThresh) {
+    if (val >= critThresh) return 'CRITICAL';
+    if (val >= thresh)     return 'WARNING';
+    if (val >= thresh*0.7) return 'APPROACHING LIMIT';
+    return 'NOMINAL';
+  }
+
+  // ── Uptime string
+  let uptimeStr = '--';
+  if (d && d.uptime_sec) {
+    const h = Math.floor(d.uptime_sec/3600);
+    const m = Math.floor((d.uptime_sec%3600)/60);
+    const s = d.uptime_sec%60;
+    uptimeStr = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  }
+
+  // ── Sensor snapshot
+  const temp    = d ? (d.temperature||0) : null;
+  const humid   = d ? (d.humidity||0)    : null;
+  const current = d ? (d.current||0)     : null;
+  const vib     = d ? (d.vibration||0)   : null;
+  const aX = d?.accel?.x||0, aY = d?.accel?.y||0, aZ = d?.accel?.z||0;
+  const gX = d?.gyro?.x||0,  gY = d?.gyro?.y||0,  gZ = d?.gyro?.z||0;
+  const systemStatus = d ? (d.status||'UNKNOWN').toUpperCase() : 'NO DATA';
+
+  // ── Build CSV-style log entries
+  const logCSV = ['TIMESTAMP,LEVEL,MESSAGE'];
+  for (const entry of eventLogEntries) {
+    const level = entry.type === 'crit' ? 'CRITICAL' : entry.type === 'warn' ? 'WARNING' : 'INFO';
+    logCSV.push(`${entry.time},${level},"${entry.msg.replace(/"/g,'""')}"`);
+  }
+
+  // ── Trend data
+  const trendCSV = ['TIMESTAMP,TEMPERATURE_C,CURRENT_A,VIBRATION_G'];
+  for (let i = 0; i < chartLabels.length; i++) {
+    trendCSV.push(`${chartLabels[i]},${tempData[i]||''},${currentData[i]||''},${vibData[i] !== undefined ? (vibData[i]/10).toFixed(4) : ''}`);
+  }
+
+  // ── Fault analysis
+  const faults = [];
+  if (temp !== null && temp > CRITICAL_THRESH.temp)       faults.push(`Temperature ${temp.toFixed(1)}°C exceeds critical limit of ${CRITICAL_THRESH.temp}°C`);
+  if (current !== null && current > CRITICAL_THRESH.current) faults.push(`Current ${current.toFixed(2)}A exceeds critical limit of ${CRITICAL_THRESH.current}A`);
+  if (vib !== null && vib > CRITICAL_THRESH.vib)           faults.push(`Vibration ${vib.toFixed(3)}g exceeds critical limit of ${CRITICAL_THRESH.vib}g`);
+
+  // ════ BUILD REPORT TEXT ════
+  const divider  = '='.repeat(72);
+  const sdivider = '-'.repeat(72);
+
+  const lines = [
+    divider,
+    '  ESP32 INDUSTRIAL MACHINE HEALTH MONITOR — SYSTEM REPORT',
+    divider,
+    `  Generated   : ${reportDate}`,
+    `  System      : ESP32 + DHT11 + MPU9255 + ACS712 (30A)`,
+    `  Firebase DB : esp32-iot-15cfb-default-rtdb.firebaseio.com`,
+    `  Uptime      : ${uptimeStr}`,
+    `  Status      : ${systemStatus}`,
+    divider,
+    '',
+    '[ 1. SENSOR SNAPSHOT — LATEST READING ]',
+    sdivider,
+    '',
+    `  Temperature      : ${temp !== null ? temp.toFixed(1)+'°C' : 'N/A'}` +
+      `  ${temp !== null ? '[ '+getStatusText(temp, THRESH.temp, CRITICAL_THRESH.temp)+' ]' : ''}`,
+    `    Warning Threshold  : ${THRESH.temp}°C`,
+    `    Critical Threshold : ${CRITICAL_THRESH.temp}°C`,
+    '',
+    `  Humidity         : ${humid !== null ? humid.toFixed(1)+'%' : 'N/A'}` +
+      `  ${humid !== null ? '[ '+getStatusText(humid, THRESH.humid, 999)+' ]' : ''}`,
+    `    Warning Threshold  : ${THRESH.humid}%`,
+    '',
+    `  Current Draw     : ${current !== null ? current.toFixed(2)+'A' : 'N/A'}` +
+      `  ${current !== null ? '[ '+getStatusText(current, THRESH.current, CRITICAL_THRESH.current)+' ]' : ''}`,
+    `    Warning Threshold  : ${THRESH.current}A`,
+    `    Critical Threshold : ${CRITICAL_THRESH.current}A`,
+    '',
+    `  Vibration Mag.   : ${vib !== null ? vib.toFixed(3)+'g' : 'N/A'}` +
+      `  ${vib !== null ? '[ '+getStatusText(vib, THRESH.vib, CRITICAL_THRESH.vib)+' ]' : ''}`,
+    `    Warning Threshold  : ${THRESH.vib}g`,
+    `    Critical Threshold : ${CRITICAL_THRESH.vib}g`,
+    '',
+    sdivider,
+    '',
+    '[ 2. IMU DETAILS — MPU9255 ]',
+    sdivider,
+    '',
+    '  Accelerometer (g):',
+    `    X = ${aX.toFixed(4)}    Y = ${aY.toFixed(4)}    Z = ${aZ.toFixed(4)}`,
+    '',
+    '  Gyroscope (°/s):',
+    `    X = ${gX.toFixed(4)}    Y = ${gY.toFixed(4)}    Z = ${gZ.toFixed(4)}`,
+    '',
+    sdivider,
+    '',
+    '[ 3. FAULT ANALYSIS ]',
+    sdivider,
+    '',
+    faults.length > 0
+      ? faults.map(f => '  !! FAULT : ' + f).join('\n')
+      : '  No active faults detected at time of report.',
+    '',
+    sdivider,
+    '',
+    '[ 4. EVENT LOG ]',
+    sdivider,
+    '',
+    ...(eventLogEntries.length > 0
+      ? eventLogEntries.map(e => {
+          const level = e.type === 'crit' ? 'CRITICAL' : e.type === 'warn' ? 'WARNING ' : 'INFO    ';
+          return `  [${e.time}]  ${level}  ${e.msg}`;
+        })
+      : ['  No events recorded in this session.']),
+    '',
+    sdivider,
+    '',
+    '[ 5. TREND DATA — LAST 20 READINGS ]',
+    sdivider,
+    '',
+    '  (Full CSV appended at end of file)',
+    `  Points captured  : ${chartLabels.length}`,
+    temp !== null
+      ? `  Temp range       : ${Math.min(...tempData).toFixed(1)}°C — ${Math.max(...tempData).toFixed(1)}°C`
+      : '',
+    current !== null
+      ? `  Current range    : ${Math.min(...currentData).toFixed(2)}A — ${Math.max(...currentData).toFixed(2)}A`
+      : '',
+    '',
+    divider,
+    '  END OF REPORT',
+    divider,
+    '',
+    '',
+    '[ APPENDIX A — EVENT LOG CSV ]',
+    sdivider,
+    logCSV.join('\n'),
+    '',
+    '',
+    '[ APPENDIX B — TREND DATA CSV ]',
+    sdivider,
+    trendCSV.join('\n'),
+    '',
+  ];
+
+  const reportText = lines.join('\n');
+
+  // ── Trigger download
+  const blob = new Blob([reportText], { type: 'text/plain;charset=utf-8' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  const ts   = new Date().toISOString().replace(/[:.]/g,'-').slice(0,19);
+  a.href     = url;
+  a.download = `machine_health_report_${ts}.txt`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+
+  addLog('System report downloaded.', 'ok');
+}
+
+// ─── Main Firebase Listener ───
+let prevStatus = null;
+let firstLoad  = true;
+
+dataRef.on('value', (snapshot) => {
+  const d = snapshot.val();
+  if (!d) return;
+
+  latestData = d; // store for report
+
+  if (firstLoad) {
+    document.getElementById('loading').classList.add('hide');
+    firstLoad = false;
+    addLog('Firebase connected. Receiving data.', 'ok');
+  }
+
+  document.getElementById('conn-dot').className  = 'dot online';
+  document.getElementById('conn-status').textContent = 'LIVE';
+
+  const temp    = d.temperature || 0;
+  const humid   = d.humidity    || 0;
+  const current = d.current     || 0;
+  const vib     = d.vibration   || 0;
+  const aX = (d.accel?.x) || 0;
+  const aY = (d.accel?.y) || 0;
+  const aZ = (d.accel?.z) || 0;
+  const gX = (d.gyro?.x)  || 0;
+  const gY = (d.gyro?.y)  || 0;
+  const gZ = (d.gyro?.z)  || 0;
+  const status  = (d.status || 'NORMAL').toUpperCase();
+  const uptime  = d.uptime_sec || 0;
+
+  if (status === 'CRITICAL' && !overlayShowing) {
+    showCriticalOverlay({ temperature:temp, current, vibration:vib });
+  } else if (status !== 'CRITICAL' && overlayShowing) {
+    hideCriticalOverlay();
+  }
+
+  updateCard('card-temp',    'val-temp',    'tag-temp',    'bar-temp',    temp,    THRESH.temp,    1);
+  updateCard('card-humid',   'val-humid',   'tag-humid',   'bar-humid',   humid,   THRESH.humid,   1);
+  updateCard('card-current', 'val-current', 'tag-current', 'bar-current', current, THRESH.current, 2);
+  updateCard('card-vib',     'val-vib',     'tag-vib',     'bar-vib',     vib,     THRESH.vib,     3);
+  document.getElementById('sub-humidity').textContent = `HUM: ${humid.toFixed(1)} %`;
+
+  updateAxisBar('ab-ax','av-ax', aX, 2, 'var(--cyan)');
+  updateAxisBar('ab-ay','av-ay', aY, 2, 'var(--cyan)');
+  updateAxisBar('ab-az','av-az', aZ, 2, 'var(--cyan)');
+  updateAxisBar('ab-gx','av-gx', gX, 250, 'var(--green)');
+  updateAxisBar('ab-gy','av-gy', gY, 250, 'var(--green)');
+  updateAxisBar('ab-gz','av-gz', gZ, 250, 'var(--green)');
+
+  const banner=document.getElementById('status-banner');
+  const sText =document.getElementById('status-text');
+  const sIcon =document.getElementById('status-icon');
+  const sMet  =document.getElementById('status-metrics');
+  banner.className='status-banner'; sText.className='status-indicator';
+
+  if (status==='CRITICAL') {
+    banner.classList.add('critical'); sText.classList.add('critical');
+    sText.textContent='⛔ CRITICAL — MACHINE SHUT DOWN'; sIcon.textContent='🚨';
+  } else if (status==='WARNING') {
+    banner.classList.add('warning'); sText.classList.add('warning');
+    sText.textContent='⚠ WARNING — THRESHOLD BREACHED'; sIcon.textContent='⚠️';
+  } else {
+    banner.classList.add('normal'); sText.classList.add('normal');
+    sText.textContent='✅ NORMAL OPERATION'; sIcon.textContent='✅';
+  }
+
+  sMet.textContent=`TEMP ${temp.toFixed(1)}°C · HUMID ${humid.toFixed(0)}% · ${current.toFixed(2)}A · VIB ${vib.toFixed(3)}g`;
+
+  const h=Math.floor(uptime/3600), m=Math.floor((uptime%3600)/60), s=uptime%60;
+  document.getElementById('uptime-display').textContent=
+    `UPTIME: ${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+
+  if (status !== prevStatus) {
+    if (status==='CRITICAL')     addLog('CRITICAL: Auto-shutdown — relay cut.', 'crit');
+    else if (status==='WARNING') addLog('WARNING: Threshold breached.', 'warn');
+    else if (prevStatus!==null)  addLog('System back to normal operation.', 'ok');
+    prevStatus = status;
+  }
+
+  chartLabels.push(now());
+  tempData.push(+temp.toFixed(1));
+  currentData.push(+current.toFixed(2));
+  vibData.push(+(vib*10).toFixed(3));
+  if (chartLabels.length>MAX_PTS) { chartLabels.shift(); tempData.shift(); currentData.shift(); vibData.shift(); }
+  chart.update();
+
+  document.getElementById('last-update').textContent=`LAST UPDATE: ${now()}`;
+});
+
+// ─── Connection lost ───
+db.ref('.info/connected').on('value', snap => {
+  if (!snap.val()) {
+    document.getElementById('conn-dot').className='dot offline';
+    document.getElementById('conn-status').textContent='DISCONNECTED';
+    addLog('Firebase connection lost.', 'crit');
+  }
+});
+
+// ─── Clock ───
+setInterval(() => { document.getElementById('clock').textContent=now(); }, 1000);
+</script>
+</body>
+</html>
