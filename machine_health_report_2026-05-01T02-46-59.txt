@@ -1,0 +1,123 @@
+========================================================================
+  ESP32 INDUSTRIAL MACHINE HEALTH MONITOR — SYSTEM REPORT
+========================================================================
+  Generated   : 1/5/2026, 08:16:59
+  System      : ESP32 + DHT11 + MPU9255 + ACS712 (30A)
+  Firebase DB : esp32-iot-15cfb-default-rtdb.firebaseio.com
+  Uptime      : 00:02:43
+  Status      : NORMAL
+========================================================================
+
+[ 1. SENSOR SNAPSHOT — LATEST READING ]
+------------------------------------------------------------------------
+
+  Temperature      : 31.9°C  [ NOMINAL ]
+    Warning Threshold  : 50°C
+    Critical Threshold : 65°C
+
+  Humidity         : 68.4%  [ APPROACHING LIMIT ]
+    Warning Threshold  : 80%
+
+  Current Draw     : 0.00A  [ NOMINAL ]
+    Warning Threshold  : 10A
+    Critical Threshold : 15A
+
+  Vibration Mag.   : 0.011g  [ NOMINAL ]
+    Warning Threshold  : 0.3g
+    Critical Threshold : 0.6g
+
+------------------------------------------------------------------------
+
+[ 2. IMU DETAILS — MPU9255 ]
+------------------------------------------------------------------------
+
+  Accelerometer (g):
+    X = 0.0308    Y = 0.0774    Z = 1.0081
+
+  Gyroscope (°/s):
+    X = -2.8244    Y = 1.5649    Z = -1.1374
+
+------------------------------------------------------------------------
+
+[ 3. FAULT ANALYSIS ]
+------------------------------------------------------------------------
+
+  No active faults detected at time of report.
+
+------------------------------------------------------------------------
+
+[ 4. EVENT LOG ]
+------------------------------------------------------------------------
+
+  [08:16:40]  INFO      System back to normal operation.
+  [08:16:38]  INFO      Machine restarted — back online.
+  [08:16:38]  WARNING   Restart command sent from webpage.
+  [08:16:14]  CRITICAL  CRITICAL: Auto-shutdown — relay cut.
+  [08:16:14]  CRITICAL  CRITICAL: Machine auto-shutdown triggered.
+  [08:15:25]  INFO      System back to normal operation.
+  [08:15:24]  INFO      Machine restarted — back online.
+  [08:15:23]  WARNING   Restart command sent from webpage.
+  [08:15:07]  CRITICAL  CRITICAL: Auto-shutdown — relay cut.
+  [08:15:07]  CRITICAL  CRITICAL: Machine auto-shutdown triggered.
+  [08:15:02]  INFO      System back to normal operation.
+  [08:14:55]  WARNING   WARNING: Threshold breached.
+  [08:14:36]  INFO      Firebase connected. Receiving data.
+  [08:14:34]  CRITICAL  Firebase connection lost.
+
+------------------------------------------------------------------------
+
+[ 5. TREND DATA — LAST 20 READINGS ]
+------------------------------------------------------------------------
+
+  (Full CSV appended at end of file)
+  Points captured  : 20
+  Temp range       : 0.0°C — 31.9°C
+  Current range    : -1.30A — 0.38A
+
+========================================================================
+  END OF REPORT
+========================================================================
+
+
+[ APPENDIX A — EVENT LOG CSV ]
+------------------------------------------------------------------------
+TIMESTAMP,LEVEL,MESSAGE
+08:16:40,INFO,"System back to normal operation."
+08:16:38,INFO,"Machine restarted — back online."
+08:16:38,WARNING,"Restart command sent from webpage."
+08:16:14,CRITICAL,"CRITICAL: Auto-shutdown — relay cut."
+08:16:14,CRITICAL,"CRITICAL: Machine auto-shutdown triggered."
+08:15:25,INFO,"System back to normal operation."
+08:15:24,INFO,"Machine restarted — back online."
+08:15:23,WARNING,"Restart command sent from webpage."
+08:15:07,CRITICAL,"CRITICAL: Auto-shutdown — relay cut."
+08:15:07,CRITICAL,"CRITICAL: Machine auto-shutdown triggered."
+08:15:02,INFO,"System back to normal operation."
+08:14:55,WARNING,"WARNING: Threshold breached."
+08:14:36,INFO,"Firebase connected. Receiving data."
+08:14:34,CRITICAL,"Firebase connection lost."
+
+
+[ APPENDIX B — TREND DATA CSV ]
+------------------------------------------------------------------------
+TIMESTAMP,TEMPERATURE_C,CURRENT_A,VIBRATION_G
+08:15:32,31.7,,0.0516
+08:15:35,31.7,,0.0178
+08:15:39,31.7,0.3,0.0221
+08:15:42,31.7,,0.0041
+08:15:46,31.7,,0.0154
+08:15:49,31.7,,0.0181
+08:15:52,31.7,,0.0174
+08:15:55,31.8,,0.1161
+08:15:59,31.8,0.34,0.0321
+08:16:02,31.8,0.27,0.0049
+08:16:06,31.8,0.22,0.0175
+08:16:09,31.8,0.27,0.0151
+08:16:13,31.8,0.29,0.0077
+08:16:14,31.8,0.38,0.0094
+08:16:40,,-1.3,0.0097
+08:16:43,31.9,,0.0125
+08:16:46,31.9,,0.0189
+08:16:50,31.9,,0.0225
+08:16:53,31.9,,0.0189
+08:16:56,31.9,,0.0115
