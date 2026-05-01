@@ -36,9 +36,9 @@
 // ─────────────────────────────────────────────
 // ★ EDIT THESE
 // ─────────────────────────────────────────────
-#define WIFI_SSID       "Redmi Note 9 Pro"
-#define WIFI_PASSWORD   "kishan@987"
-#define API_KEY         "AIzaSyD2DqQ0uJXaFpGOkUc8Pe5SwQxpk2dOQ1Y"
+#define WIFI_SSID       "YOU WIFI NAME"
+#define WIFI_PASSWORD   "PASSWORD OF WIFI"
+#define API_KEY         "ENTER YOUR API KEY"
 #define DATABASE_URL    "https://esp32-iot-15cfb-default-rtdb.firebaseio.com/"
 
 // ─────────────────────────────────────────────
