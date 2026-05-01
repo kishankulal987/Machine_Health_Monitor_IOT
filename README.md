@@ -94,7 +94,7 @@ An IoT-based system that monitors machine parameters such as **temperature, humi
 ### 📥 Downloaded Report
 you can view downloaded report above in the file section
 
-
+[click here to see the webpage]([https://www.google.com](https://kishankulal987.github.io/iot-dashboard/))
 
 ---
 
